@@ -222,14 +222,14 @@ namespace SASEBO_Measure_Lecroy
             //1表示DC,0表示AC
             //A通道打开，DC，范围为20mv,偏移-105MV
             //ret = Imports.SetChannel(_handle, Imports.Channel.ChannelA, 1, 1, Imports.Range.Range_500MV, (float)-1.05);
-            ret = Imports.SetChannel(_handle, Imports.Channel.ChannelA, 1, 0, Imports.Range.Range_500MV, (float)0);
+            ret = Imports.SetChannel(_handle, Imports.Channel.ChannelA, 1, 1, Imports.Range.Range_1V, (float)0);
             if (ret != 0)
             {
                 System.Console.WriteLine("SetChannelA出错！");
                 return false;
             }
             //B通道关闭
-            Imports.SetChannel(_handle, Imports.Channel.ChannelB, 1, 0, Imports.Range.Range_5V, 0);
+            Imports.SetChannel(_handle, Imports.Channel.ChannelB, 1, 1, Imports.Range.Range_5V, 0);
             if (ret != 0)
             {
                 System.Console.WriteLine("SetChannelB出错！");
@@ -733,23 +733,41 @@ namespace SASEBO_Measure_Lecroy
             //}
         }
 
-        public bool GetOneTrace_Ttest_MaskedAES(int samples, int mlen, byte[] plain, byte[] cipher, bool Ttest, bool RNGOn)
+        public bool GetOneTrace_Ttest_MaskedAES(int samples, int mlen, byte[] plain, byte[] cipher, bool Ttest, bool RNGOn,uint timebase)
         {
 
             //明密文
-            byte[] text_ans = new byte[mlen];
-            byte[] text_in = new byte[mlen];
+            //byte[] text_ans = new byte[mlen];
+            //byte[] text_in = new byte[mlen];
+            //byte[] text_out = new byte[mlen];
+
+            ////Random plaintext
+            //ra.NextBytes(plain);
+            //byte[] key = { 0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6, 0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c };
+            ////Change the last share according to Ttest flag
+            //if (Ttest)
+            //{ 
+            //    for (int i = 0; i < mlen; i=i+1)
+            //        plain[i] = (byte)(plain[i % 2] ^ key[i%2] ^ key[i]);
+            //    //plain[mlen - 1] = (byte)(0x52 ^ key[mlen - 1]);
+            //    //plain[mlen - 2] = (byte)(0x52 ^ key[mlen - 2]);
+            //}
+
+            byte[] text_ans = new byte[mlen+6];
+            byte[] text_in = new byte[mlen+6];
             byte[] text_out = new byte[mlen];
 
             //Random plaintext
             ra.NextBytes(plain);
+            ra.NextBytes(text_in);
             byte[] key = { 0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6, 0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c };
             //Change the last share according to Ttest flag
             if (Ttest)
-            { 
-                for (int i = 0; i < mlen; i++)
-                   plain[i]= (byte)(0x0^key[i]);
-
+            {
+                for (int i = 0; i < mlen; i = i + 1)
+                    plain[i] = (byte)(plain[0] ^ key[0] ^ key[i]);
+                //plain[mlen - 1] = (byte)(0x52 ^ key[mlen - 1]);
+                //plain[mlen - 2] = (byte)(0x52 ^ key[mlen - 2]);
             }
 
             for (int i = 0; i < mlen; i++)
@@ -765,7 +783,7 @@ namespace SASEBO_Measure_Lecroy
             }
             ////5、开始测量
             int time_interval_ms = 0;
-            ret = Imports.RunBlock(_handle, (int)(samples * 1), (int)(samples * (1 - 1)), 6, (short)0, out time_interval_ms, (ushort)0, null, IntPtr.Zero);
+            ret = Imports.RunBlock(_handle, (int)(samples * 1), (int)(samples * (1 - 1)), timebase, (short)0, out time_interval_ms, (ushort)0, null, IntPtr.Zero);
             if (ret != 0)
                 System.Console.WriteLine("RunBlock出错！");
             try
@@ -2510,7 +2528,7 @@ namespace SASEBO_Measure_Lecroy
         }
 
         //采集函数
-        public void MeasureTraces_Ttest_MaskedAES(byte[] key, int samples, int TraceNum, string portname, uint delay)
+        public void MeasureTraces_Ttest_MaskedAES(byte[] key, int samples, int TraceNum, string portname, uint delay,uint timebase)
         {
             //byte SampleCoding = 0x02;
             int mlen = 16;
@@ -2519,7 +2537,7 @@ namespace SASEBO_Measure_Lecroy
             bool flag = true;
             UnivariateTtest Tvla = new UnivariateTtest(samples);
             System.Console.WriteLine("示波器准备：");
-            flag = PrepareScope(samples, delay);
+            flag = PrepareScope(samples, delay,timebase);
             if (!flag)
             {
                 return;
@@ -2552,12 +2570,12 @@ namespace SASEBO_Measure_Lecroy
             double[] temp = new double[measurements.Length];
             for (int i = 0; i < TraceNum; i++)
             {
-                if (i % 100 == 0)
+                if (i % 1000 == 0)
                 {
                     System.Console.WriteLine("Trace {0}:", i);
                 }
                 bool Tv = ra.NextDouble() > 0.5;
-                flag = GetOneTrace_Ttest_MaskedAES(samples, mlen, plain, cipher, Tv, true);
+                flag = GetOneTrace_Ttest_MaskedAES(samples, mlen, plain, cipher, Tv, true,timebase);
                 if (flag)
                 {
                     //centeredTrace(measurements);
@@ -2569,9 +2587,9 @@ namespace SASEBO_Measure_Lecroy
                     Tvla.UpdateTrace(temp, Tv);
                     if (i % 1000 == 0)
                     {
-                        Ttrend1[i / 1000] = Tvla.WriteTTrace("BSMaskedAES_Sbox_Ttest_O1.txt", 1);
-                        Ttrend2[i / 1000] = Tvla.WriteTTrace("BSMaskedAES_Sbox_Ttest_O2.txt", 2);
-                        Ttrend3[i / 1000] = Tvla.WriteTTrace("BSMaskedAES_Sbox_Ttest_O3.txt", 3);
+                        Ttrend1[i / 1000] = Tvla.WriteTTrace("ANSSI_AffineMaskedAES_Sbox_Ttest_O1.txt", 1);
+                        Ttrend2[i / 1000] = Tvla.WriteTTrace("ANSSI_AffineMaskedAES_Sbox_Ttest_O2.txt", 2);
+                        Ttrend3[i / 1000] = Tvla.WriteTTrace("ANSSI_AffineMaskedAES_Sbox_Ttest_O3.txt", 3);
                         sw1.WriteLine("{0}", Ttrend1[i / 1000]);
                         sw2.WriteLine("{0}", Ttrend2[i / 1000]);
                         sw3.WriteLine("{0}", Ttrend3[i / 1000]);
@@ -3682,7 +3700,7 @@ namespace SASEBO_Measure_Lecroy
         {
             byte SampleCoding = 0x02;
             int mlen =32;
-            float XScale = (float)2E-9;
+            float XScale = (float)4E-9;
             float YScale = (float)1;
             bool flag = true;
             UnivariateTtest Tvla = new UnivariateTtest(samples);
