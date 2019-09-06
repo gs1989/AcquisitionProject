@@ -27,20 +27,20 @@ namespace SASEBO_Measure_Lecroy
             //{
             //    mea.MeasureTraces_BitInteraction_RapidRepeat("M3_" + InstrName[instr] + "_4shares600S_250MSa_8SameValue_DifferentShares_Rapid100.trs", samples, traces, "COM12", timebase, instr, InstrName[instr], shares, RapidRepeat);
             //}
-            //int samples = 600;
-            //int traces = 1000000;
-            //byte internal_repeat = 1000 / 10;
-            //byte block_repeat = 8;
-            //uint timebase = 1;//4ns
-            //bool refresh = false;
-            //Measurement mea = new Measurement(samples, 16);
-            //mea.Ttest_BitInteraction("SCALE_4shares_M3_BitSlicedAND2_ThumbShiftLeft_REALAND2_BlockwiseSlicing_8SamePlaintexts_NoRefreshing_1M_Avg1000.trs", samples, traces, "COM12", timebase, key, refresh, internal_repeat, block_repeat);
-            ////mea.Ttest_Inspecting(key, 250, 50000, "COM5", 250);
-            int samples = 13000;
+            int samples = 600;
             int traces = 1000000;
-            uint timebase = 1;//4ns;
+            byte internal_repeat = 100 / 10;
+            byte block_repeat = 8;
+            uint timebase = 1;//4ns
+            bool refresh = false;
             Measurement mea = new Measurement(samples, 16);
-            mea.MeasureTraces_Ttest_MaskedAES(key, samples, traces, "COM11", 0,timebase);
+            mea.Ttest_BitInteraction("SCALE_4shares_M3_BitSlicedAND2_ThumbShiftLeft_REALAND2_BlockwiseSlicing_8SamePlaintexts_NoRefreshing_1M_Avg100.trs", samples, traces, "COM12", timebase, key, refresh, internal_repeat, block_repeat);
+            ////mea.Ttest_Inspecting(key, 250, 50000, "COM5", 250);
+            //int samples = 13000;
+            //int traces = 1000000;
+            //uint timebase = 1;//4ns;
+            //Measurement mea = new Measurement(samples, 16);
+            //mea.MeasureTraces_Ttest_MaskedAES(key, samples, traces, "COM11", 0,timebase);
 
             //CipherModule.GeneralDevice cipher_hw = new CipherModule.GeneralDevice("COM10");//指定当前硬件设备接口实例为SASEBO_G
             //////准备硬件设备

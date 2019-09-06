@@ -1389,6 +1389,7 @@ namespace SASEBO_Measure_Lecroy
             //text_in[17] = internal_repeat;
            
             //M3-2shares-
+
             for (int i = 0; i < repeat; i++)
             {
                 ret = Imports.SetDataBuffer(_handle, Imports.Channel.ChannelA, Mulmeasurements[i], samples, (ushort)i, Imports.RatioMode.None);
