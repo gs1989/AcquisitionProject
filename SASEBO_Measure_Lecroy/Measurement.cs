@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.IO;
 using SASEBO_Measure_Lecroy.CipherModule;
+using System.Threading;
 namespace SASEBO_Measure_Lecroy
 {
     class Measurement
@@ -21,6 +22,10 @@ namespace SASEBO_Measure_Lecroy
         public CipherTool.IBlockCipher cipher_sw;
         public FileStream fs;
         public BinaryWriter wr;
+
+        public static UnivariateTtest Tvla=null;
+        public static UnivariateTtest Tvla1 = null;
+
         short[] temp ;
         double[] doubletemp;
         byte[] text_ans;
@@ -174,7 +179,7 @@ namespace SASEBO_Measure_Lecroy
             //1表示DC,0表示AC
             //A通道打开，DC，范围为20mv,偏移-105MV
             //ret = Imports.SetChannel(_handle, Imports.Channel.ChannelA, 1, 1, Imports.Range.Range_500MV, (float)-1.05);
-            ret = Imports.SetChannel(_handle, Imports.Channel.ChannelA, 1, 0, Imports.Range.Range_1V, (float)0);
+            ret = Imports.SetChannel(_handle, Imports.Channel.ChannelA, 1, 0, Imports.Range.Range_500MV, (float)0);
             if (ret != 0)
             {
                 System.Console.WriteLine("SetChannelA出错！");
@@ -222,7 +227,7 @@ namespace SASEBO_Measure_Lecroy
             //1表示DC,0表示AC
             //A通道打开，DC，范围为20mv,偏移-105MV
             //ret = Imports.SetChannel(_handle, Imports.Channel.ChannelA, 1, 1, Imports.Range.Range_500MV, (float)-1.05);
-            ret = Imports.SetChannel(_handle, Imports.Channel.ChannelA, 1, 1, Imports.Range.Range_1V, (float)0);
+            ret = Imports.SetChannel(_handle, Imports.Channel.ChannelA, 1, 1, Imports.Range.Range_50MV, (float)0);
             if (ret != 0)
             {
                 System.Console.WriteLine("SetChannelA出错！");
@@ -333,7 +338,7 @@ namespace SASEBO_Measure_Lecroy
             //1表示DC,0表示AC
             //A通道打开，DC，范围为20mv,偏移-105MV
             //ret = Imports.SetChannel(_handle, Imports.Channel.ChannelA, 1, 1, Imports.Range.Range_500MV, (float)-1.05);
-            ret = Imports.SetChannel(_handle, Imports.Channel.ChannelA, 1, 1, Imports.Range.Range_500MV, (float)-0.1);
+            ret = Imports.SetChannel(_handle, Imports.Channel.ChannelA, 1, 1, Imports.Range.Range_500MV, (float)-0.2);
             if (ret != 0)
             {
                 System.Console.WriteLine("SetChannelA出错！");
@@ -373,7 +378,7 @@ namespace SASEBO_Measure_Lecroy
                 return false;
             }
             //4、设置触发信号
-            short triggerVoltage = mv_to_adc((short)1000, (short)Imports.Range.Range_5V); // ChannelInfo stores ADC counts
+            short triggerVoltage = mv_to_adc((short)300, (short)Imports.Range.Range_5V); // ChannelInfo stores ADC counts
             ret = Imports.SetTrigger(_handle, 1, Imports.Channel.ChannelB, triggerVoltage, Imports.ThresholdDirection.Rising, (uint)delay, 0);
             if (ret != 0)
             {
@@ -837,7 +842,91 @@ namespace SASEBO_Measure_Lecroy
             //    return false;
             //}
         }
+        public bool GetOneTrace_TestCollision(int samples, int mlen, byte[] plain, byte[] cipher, bool Ttest,uint timebase)
+        {
 
+            byte[] text_ans = new byte[mlen + 6];
+            byte[] text_in = new byte[mlen + 6];
+            byte[] text_out = new byte[mlen];
+
+            //Random plaintext
+            ra.NextBytes(plain);
+            ra.NextBytes(text_in);
+            byte[] key = { 0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6, 0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c };
+            //Change the last share according to Ttest flag
+            if (Ttest)
+            {
+                for (int i = 0; i < mlen; i = i + 4)
+                    plain[i] = (byte)(plain[0] ^ key[0] ^ key[i]);
+            }
+
+            for (int i = 0; i < mlen; i++)
+            {
+                text_in[i] = plain[i];
+            }
+
+            short ret = Imports.SetDataBuffer(_handle, Imports.Channel.ChannelA, temp, samples, 0, Imports.RatioMode.None);
+            if (ret != 0)
+            {
+                System.Console.WriteLine("SetDataBuffer出错！");
+                return false;
+            }
+            ////5、开始测量
+            int time_interval_ms = 0;
+            ret = Imports.RunBlock(_handle, (int)(samples * 1), (int)(samples * (1 - 1)), timebase, (short)0, out time_interval_ms, (ushort)0, null, IntPtr.Zero);
+            if (ret != 0)
+                System.Console.WriteLine("RunBlock出错！");
+            try
+            {
+
+                //执行硬件加密
+                text_out = cipher_hw.Encrypt_Masked(text_in, mlen);
+            }
+            catch (Exception e)
+            {
+                System.Console.WriteLine("   failed: {0}", e.Message);
+                return false;
+            }
+            for (int i = 0; i < mlen; i++)
+                cipher[i] = text_out[i];
+            short red = 0;
+            int c = 0;
+            do
+            {
+                Imports.IsReady(_handle, out red);
+                if (c > 0)
+                    System.Threading.Thread.Sleep(50);//延时
+                c++;
+                if (c == 5)
+                    return false;
+            }
+            while (red == 0);
+
+            //7、测量完成，取回数据
+            short overflow = 0;
+            uint getSamples = (uint)samples;
+            ret = Imports.GetValues(_handle, (uint)0, ref getSamples, (uint)1, Imports.DownSamplingMode.None, (ushort)0, out overflow);
+            if (ret != 0)
+            {
+                System.Console.WriteLine("GetValues出错！");
+                return false;
+            }
+            if (overflow != 0)
+            {
+                System.Console.WriteLine("Overflow!");
+                Array.Sort(temp);
+                return false;
+            }
+            Array.Copy(temp, measurements, samples);
+            // Verify Sbox
+            //if (Verify_SITI8(plain, cipher))
+            return true;
+            //else
+            //{
+            //    System.Console.WriteLine("Incorrect Sbox!");
+            //    return false;
+            //}
+        }
         public bool GetMultipleTrace_RapidTtest_MaskedAES(int samples, int mlen,bool[] Ttest, bool RNGOn,int nSeg)
         {
 
@@ -971,6 +1060,8 @@ namespace SASEBO_Measure_Lecroy
             uint op2 = ((uint)input[4] << 24) | ((uint)input[5] << 16) | ((uint)input[6] << 8) | (uint)(input[7]);
             for (int i = 0; i < 32; i++)
             {
+                //if (i >= 16)
+                //    continue;
                 if (i >= 32)//Using the same shares
                 {
                    if (GetBit(op1, i % shares) == 1)
@@ -1044,10 +1135,10 @@ namespace SASEBO_Measure_Lecroy
             //if (!Ttest)
             //    return;
             //Ignore Op1
-            //input[0]=(byte)((op1>>24)&0xff);
-            //input[1]=(byte)((op1>>16)&0xff);
-            //input[2]=(byte)((op1>>8)&0xff);
-            //input[3] = (byte)((op1) & 0xff);
+            input[0]=(byte)((op1>>24)&0xff);
+            input[1]=(byte)((op1>>16)&0xff);
+            input[2]=(byte)((op1>>8)&0xff);
+            input[3] = (byte)((op1) & 0xff);
             input[4] = (byte)((op2 >> 24) & 0xff);
             input[5] = (byte)((op2 >> 16) & 0xff);
             input[6] = (byte)((op2 >> 8) & 0xff);
@@ -1178,9 +1269,9 @@ namespace SASEBO_Measure_Lecroy
             {
                 Imports.IsReady(_handle, out red);
                 if (c > 0)
-                    System.Threading.Thread.Sleep(50);//延时
+                    System.Threading.Thread.Sleep(100);//延时
                 c++;
-                if (c == 5)
+                if (c == 10)
                     return false;
             }
             while (red == 0);
@@ -1459,6 +1550,121 @@ namespace SASEBO_Measure_Lecroy
             //    return false;
             //}
         }
+
+        public bool GetOneTrace_TAttack_Sbox_RapidRepeat_Thread(int samples, uint timebase, byte[] plain, byte[] cipher, int repeat, bool fresh, byte internal_repeat, byte block_repeat, Thread pth)
+        {
+
+            byte[] text_in = new byte[18];
+            byte[] text_out = new byte[16];
+            //Change the last share according to Ttest flag
+            short ret = 0;
+            for (int i = 0; i < 16; i++)
+                text_in[i] = plain[i];
+            //M3-4shares-
+            //if (fresh)
+            //     text_in[16] = 0xff;
+            // else
+            //    text_in[16] = 0;
+            //text_in[17] = internal_repeat;
+            text_in[16] = block_repeat;
+            text_in[17] = internal_repeat;
+           
+            //M3---
+            //M0---
+            //if (fresh)
+            //    text_in[16] = 0xff;
+            //else
+            //    text_in[16] = 0;
+            //text_in[17] = block_repeat;
+            //text_in[18] = internal_repeat;
+            //M0-4shares-
+            //M3-2shares-
+
+            //text_in[16] = block_repeat;
+            //text_in[17] = internal_repeat;
+
+            //M3-2shares-
+
+            for (int i = 0; i < repeat; i++)
+            {
+                ret = Imports.SetDataBuffer(_handle, Imports.Channel.ChannelA, Mulmeasurements[i], samples, (ushort)i, Imports.RatioMode.None);
+                if (ret != 0)
+                {
+                    System.Console.WriteLine("SetDataBuffer Failed!");
+                    return false;
+                }
+            }
+            ////5、开始测量
+            int time_interval_ms = 0;
+            ret = Imports.RunBlock(_handle, (int)(samples * 1), (int)(samples * (1 - 1)), timebase, (short)0, out time_interval_ms, (ushort)0, null, IntPtr.Zero);
+            if (ret != 0)
+                System.Console.WriteLine("RunBlock出错！");
+
+           
+            try
+            {
+
+                //执行硬件加密
+                text_out = cipher_hw.SendAReadBack(text_in, 16);
+
+            }
+            catch (Exception e)
+            {
+                System.Console.WriteLine("   failed: {0}", e.Message);
+                return false;
+            }
+
+            short red = 0;
+            int c = 0;
+            do
+            {
+                Imports.IsReady(_handle, out red);
+                if (c > 0)
+                    System.Threading.Thread.Sleep(50);//延时
+                c++;
+                if (c == 50)
+                    return false;
+            }
+            while (red == 0);
+
+            //System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
+           // stopwatch.Start();
+            //Check the thread
+            if (pth != null)
+            {
+                //wait until pth finish
+                pth.Join();
+                while (pth.ThreadState != ThreadState.Stopped)
+                    Thread.Sleep(10);
+            }
+            //stopwatch.Stop();
+            //Console.WriteLine("Ttest Waiting Time=" + stopwatch.ElapsedTicks);
+            //7、测量完成，取回数据
+            short[] overflow = new short[repeat];
+            uint getSamples = (uint)samples;
+
+            ret = Imports.GetValuesRapid(_handle, ref getSamples, (ushort)0, (ushort)(repeat - 1), 1, Imports.DownSamplingMode.None, overflow);
+            if (ret != 0)
+            {
+                System.Console.WriteLine("GetValues出错！");
+                return false;
+            }
+            for (int i = 0; i < repeat; i++)
+            {
+                if (overflow[i] != 0)
+                {
+                    System.Console.WriteLine("Overflow!");
+                    return false;
+                }
+            }
+           
+
+            for (int i = 0; i < 16; i++)
+                cipher[i] = text_out[i];
+            return true;
+
+        }
+
         public bool GetOneTrace_PowerModel(int samples, int mlen, byte[] plain, byte[] cipher,int ind,int repeat)
         {
 
@@ -2710,6 +2916,93 @@ namespace SASEBO_Measure_Lecroy
             fs3.Close();
         }
 
+        //采集函数
+        public void MeasureTraces_TableCollision(byte[] key, int samples, int TraceNum, string portname, uint timebase)
+        {
+
+            int mlen = 16;
+            byte[] plain = new byte[mlen];
+            byte[] cipher = new byte[mlen];
+            //float XScale = (float)2E-9;
+            //float YScale = (float)1;
+            bool flag = true;
+            UnivariateTtest Tvla = new UnivariateTtest(samples);
+            System.Console.WriteLine("示波器准备：");
+            flag = PrepareScope(samples, 0);
+            if (!flag)
+            {
+                return;
+            }
+            System.Console.WriteLine("密码设备准备：");
+            flag = PrepareCryptoModule(portname);
+            if (!flag)
+            {
+                CloseScope();
+                return;
+            }
+            System.Console.WriteLine("打开输入文件：");
+            //OpenOutputFile(outfile);
+            //System.Console.WriteLine("写入trs文件头：");
+            //WriteFileHeader(TraceNum, samples, SampleCoding, mlen, XScale, YScale);
+            System.Console.WriteLine("开始采集：");
+            double[] Ttrend1 = new double[TraceNum / 1000];
+            double[] Ttrend2 = new double[TraceNum / 1000];
+            double[] Ttrend3 = new double[TraceNum / 1000];
+            FileStream fs1 = new FileStream("Ttrend-O1.txt", FileMode.Create);
+            FileStream fs2 = new FileStream("Ttrend-O2.txt", FileMode.Create);
+            FileStream fs3 = new FileStream("Ttrend-O3.txt", FileMode.Create);
+            FileStream fs4 = new FileStream("OneTrace.txt", FileMode.Create);
+            StreamWriter sw1 = new StreamWriter(fs1);
+            StreamWriter sw2 = new StreamWriter(fs2);
+            StreamWriter sw3 = new StreamWriter(fs3);
+            StreamWriter sw4 = new StreamWriter(fs4);
+            double[] temp = new double[measurements.Length];
+            for (int i = 0; i < TraceNum ; i++)
+            {
+                
+                bool Tv = ra.NextDouble() > 0.5;
+                flag = GetOneTrace_TestCollision(samples, mlen, plain, cipher, Tv,timebase);
+                if (flag)
+                {
+                    for (int m = 0; m < temp.Length; m++)
+                        temp[m] = (double)measurements[m];
+                    Tvla.UpdateTrace(temp, Tv);
+                    if (i % 1000 == 0 && i > 0)
+                    {
+                        System.Console.WriteLine("Trace {0}:", i);
+                        Ttrend1[i/1000] = Tvla.WriteTTrace("TestTableCollision_O1.txt", 1);
+                        Ttrend2[i/1000] = Tvla.WriteTTrace("TestTableCollision_O2.txt", 2);
+                        Ttrend3[i/1000] = Tvla.WriteTTrace("TestTableCollision_O3.txt", 3);
+                        sw1.WriteLine("{0}", Ttrend1[i/1000]);
+                        sw2.WriteLine("{0}", Ttrend2[i/1000]);
+                        sw3.WriteLine("{0}", Ttrend3[i/1000]);
+                        sw1.Flush();
+                        sw2.Flush();
+                        sw3.Flush();
+                    }
+                }
+                else
+                    i = i - 1;
+                if (i == 0)
+                {
+                    for (int j = 0; j < samples; j++)
+                        sw4.WriteLine("{0}", temp[j]);
+                    sw4.Close();
+                    fs4.Close();
+                }
+            }
+            System.Console.WriteLine("采集完成，关闭设备");
+            CloseScope();
+            CloseCryptoModule();
+            //CloseOutputFile();
+            sw1.Close();
+            sw2.Close();
+            sw3.Close();
+            fs1.Close();
+            fs2.Close();
+            fs3.Close();
+        }
+
         public void MeasureTraces_PowerModel(string outfile, byte[] key, int samples, int TraceNum, string portname, uint delay,int repeat)
         {
             byte SampleCoding = 0x02;
@@ -2931,7 +3224,7 @@ namespace SASEBO_Measure_Lecroy
                 WriteOneTrace(samples,plain,cipher);
 
                 //Filtering
-                HighPass(12E6, temp,250E6);
+                //HighPass(12E6, temp,250E6);
                 if (i == 0)
                 {
                     for (int j = 0; j < temp.Length; j++)
@@ -2945,7 +3238,7 @@ namespace SASEBO_Measure_Lecroy
                 for (int m = 0; m < temp.Length; m++)
                     temp[m] = (double)measurements[m];
                 //Filtering
-                LowPass(2E6, temp, 250E6);
+                //LowPass(2E6, temp, 250E6);
 
                 //Filtering
                 for (int m = 0; m < temp.Length; m++)
@@ -3095,8 +3388,12 @@ namespace SASEBO_Measure_Lecroy
                 WriteOneTrace(samples, plain, cipher);
                 if (i == 0)
                 {
-                    for (int j = 0; j < temp.Length; j++)
-                        sw.WriteLine("{0}", measurements[j]);
+                    for (int m = 0; m < repeat; m++)
+                    {
+                        for (int j = 0; j < temp.Length; j++)
+                            sw.Write("{0}\t", Mulmeasurements[m][j]);
+                        sw.WriteLine("");
+                    }
                     sw.Close();
                     fs.Close();
                 }
@@ -3441,6 +3738,136 @@ namespace SASEBO_Measure_Lecroy
             byte[] temp = aes.GetSin_Correct(plain, key, 0);
             return BSSbox_M34(temp[0]);
         }
+
+
+        //Adding traces to Ttest, in a seperate thread 
+        public static void AddToTtest(short[][] Mulmeasurements, bool[] flag)
+        {
+            double[] t=new double[Mulmeasurements[0].Length];
+            for (int i = 0; i < flag.Length; i++)
+            {
+                for(int j=0;j<t.Length;j++)
+                    t[j]=Mulmeasurements[i][j];
+                Tvla.UpdateTrace(t, flag[i]);
+                for (int j = 0; j < t.Length; j++)
+                    t[j] = Math.Pow(t[j], 4);
+                Tvla1.UpdateTrace(t, flag[i]);
+            }
+        }
+        public void Ttest_BitInteraction_Thread(string TRSfilename, int samples, int TraceNum, string portname, uint timebase, byte[] key, bool refresh,byte internal_repeat, byte block_repeat)
+        {
+            Tvla = new UnivariateTtest(samples);
+            Tvla1 = new UnivariateTtest(samples);
+            UnivariateTtest Tvla2 = new UnivariateTtest(1);
+            int repeat = 10 * internal_repeat;
+            if (repeat == 0)
+                repeat = 1;
+            Mulmeasurements = new short[repeat][];
+            for (int i = 0; i < repeat; i++)
+                Mulmeasurements[i] = new short[samples];
+
+            bool flag = true;
+            byte SampleCoding = 0x02;
+            int mlen = 16;
+            float XScale = (float)4E-9;
+            float YScale = (float)1;
+            int step = 1000;
+            System.Console.WriteLine("Papare Scope:");
+            flag = PrepareScope_Rapid(samples, 0, timebase, (ushort)repeat);
+            if (!flag)
+            {
+                return;
+            }
+            System.Console.WriteLine("Papare Cryptographic Device:");
+            flag = PrepareCryptoModule(portname);
+            if (!flag)
+            {
+                CloseScope();
+                return;
+            }
+            OpenOutputFile(TRSfilename);
+            System.Console.WriteLine("写入trs文件头：");
+            WriteFileHeader(TraceNum, samples, SampleCoding, mlen, XScale, YScale);
+            double[] Ttrend1 = new double[TraceNum / step];
+            double[] Ttrend2 = new double[TraceNum / step];
+            double[] Ttrend3 = new double[TraceNum / step];
+            double[] Ttrend4 = new double[TraceNum / step];
+            FileStream fs1 = new FileStream("Ttrend-O1.txt", FileMode.Create);
+            StreamWriter sw1 = new StreamWriter(fs1);
+            FileStream fs2 = new FileStream("Ttrend-O2.txt", FileMode.Create);
+            StreamWriter sw2 = new StreamWriter(fs2);
+            FileStream fs3 = new FileStream("Ttrend-O3.txt", FileMode.Create);
+            StreamWriter sw3 = new StreamWriter(fs3);
+            FileStream fs4 = new FileStream("Ttrend-O4.txt", FileMode.Create);
+            StreamWriter sw4 = new StreamWriter(fs4);
+            double[] temp = new double[measurements.Length];
+            byte[] plain = new byte[16];
+            byte[] cipher = new byte[16];
+            Thread pth = null;
+            for (int i = 0; i < TraceNum; i++)
+            {
+                if (i % step == 0)
+                    System.Console.WriteLine("Loop {0}:", i);
+                ra.NextBytes(plain);
+                flag = GetOneTrace_TAttack_Sbox_RapidRepeat_Thread(samples, timebase, plain, cipher, repeat, refresh, internal_repeat, block_repeat,pth);
+                if (flag == false)
+                {
+                    System.Console.WriteLine("Overflow!");
+                    i--;
+                    continue;
+                }
+
+                double[] sum = new double[samples];
+
+                //Get T flag
+                bool Tv = GetBSSbox_M34(key, plain);
+                if (Tv != (HW((byte)(cipher[0] & 0xf)) % 2 != 0))
+                    System.Console.WriteLine("Error!");
+                //Get T flag
+                bool[] flaga=new bool[repeat];
+                for(int j=0;j<repeat;j++)
+                    flaga[j]=Tv;
+
+                if(pth==null || pth.IsAlive==false)
+                    pth = new Thread(() => AddToTtest(Mulmeasurements,flaga),0);
+                pth.IsBackground = true;
+                pth.Start();
+
+               
+                if (i % step == 0)
+                {
+                    pth.Join();
+                    Ttrend1[i / step] = Tvla.WriteTTrace("TLVATest_BSSbox_M34_4shares_O1.txt", 1);
+                    Ttrend2[i / step] = Tvla.WriteTTrace("TLVATest_BSSbox_M34_4shares_O2.txt", 2);
+                    Ttrend3[i / step] = Tvla.WriteTTrace("TLVATest_BSSbox_M34_4shares_O3.txt", 3);
+                    Ttrend4[i / step] = Tvla1.WriteTTrace("TLVATest_BSSbox_M34_4shares_O4.txt", 1);
+                    sw1.WriteLine("{0}", Ttrend1[i / step]);
+                    sw1.Flush();
+                    sw2.WriteLine("{0}", Ttrend2[i / step]);
+                    sw2.Flush();
+                    sw3.WriteLine("{0}", Ttrend3[i / step]);
+                    sw3.Flush();
+                    sw4.WriteLine("{0}", Ttrend4[i / step]);
+                    sw4.Flush();
+                    Tvla2.WriteTTrace("TLVATest_Model_M34_4shares_O1.txt", 1);
+                    Tvla2.WriteTTrace("TLVATest_Model_M34_4shares_O2.txt", 2);
+                    Tvla2.WriteTTrace("TLVATest_Model_M34_4shares_O3.txt", 3);
+                }
+            }
+            System.Console.WriteLine("采集完成，关闭设备");
+            CloseScope();
+            CloseCryptoModule();
+            sw1.Close();
+            fs1.Close();
+            sw2.Close();
+            fs2.Close();
+            sw3.Close();
+            fs3.Close();
+            sw4.Close();
+            fs4.Close();
+            CloseOutputFile();
+        }
+
         public void Ttest_BitInteraction(string TRSfilename,int samples, int TraceNum, string portname, uint timebase,byte[] key,bool fresh, byte internal_repeat,byte block_repeat)
         {
             UnivariateTtest Tvla = new UnivariateTtest(samples);
@@ -3487,8 +3914,8 @@ namespace SASEBO_Measure_Lecroy
             StreamWriter sw3 = new StreamWriter(fs3);
             FileStream fs4 = new FileStream("Ttrend-O4.txt", FileMode.Create);
             StreamWriter sw4 = new StreamWriter(fs4);
-            FileStream fs = new FileStream("OneTrace.txt", FileMode.Create);
-            StreamWriter sw = new StreamWriter(fs);
+            FileStream fs = null;
+            StreamWriter sw = null;
             double[] temp = new double[measurements.Length];
             byte[] plain = new byte[16];
             byte[] cipher = new byte[16];
@@ -3505,18 +3932,12 @@ namespace SASEBO_Measure_Lecroy
                     i--;
                     continue;
                 }
-                if (i == 0)
-                {
-                    for (int j = 0; j < samples; j++)
-                        sw.WriteLine("{0}", Mulmeasurements[0][j]);
-                    sw.Close();
-                    fs.Close();
-                }
+                
                 double[] sum = new double[samples];
 
                 //Get T flag
                 bool Tv = GetBSSbox_M34(key, plain);
-                if (Tv != (HW((byte)(cipher[0] & 0x0f)) % 2 != 0))
+                if (Tv != (HW((byte)(cipher[0] & 0xf)) % 2 != 0))
                     System.Console.WriteLine("Error!");
                 //Get T flag
                 if (fresh)
@@ -3547,10 +3968,18 @@ namespace SASEBO_Measure_Lecroy
                         }
 
                     }
+                    double mean = 0;
                     for (int j = 0; j < samples; j++)
                     {
                         temp[j] = sum[j] / repeat;
-                        measurements[j] = (short)(sum[j] / repeat);
+                        mean += temp[j];
+                    }
+                    mean = mean / samples;
+                    //mean = 0 ;
+                    for (int j = 0; j < samples; j++)
+                    {
+                        temp[j] = temp[j] - mean;
+                        measurements[j] = (short)temp[j];
                     }
                     WriteOneTrace(samples, plain, cipher);
 
@@ -3559,17 +3988,36 @@ namespace SASEBO_Measure_Lecroy
                         model[0] = model[0] + HW((byte)cipher[j]);
                     Tvla2.UpdateTrace(model, Tv);
                     //Filtering
-                    //HighPass(12E6, temp, 250E6);
+                    //LowPass(15E6, temp, 250E6);
                     Tvla.UpdateTrace(temp, Tv);
                     for (int j = 0; j < temp.Length; j++)
                         temp[j] = measurements[j];
                     //Filtering
-                    //LowPass(12E6, temp, 250E6);
+                   // LowPass(15E6, temp, 250E6);
 
                     //Filtering
                     for (int j = 0; j < temp.Length; j++)
                         temp[j] = Math.Pow(temp[j], 4);
                     Tvla1.UpdateTrace(temp, Tv);
+                }
+                if ((i % step) < 10)
+                {
+                    if (i % step == 0)
+                    {
+                        fs = new FileStream("OneTrace.txt", FileMode.Create);
+                        sw = new StreamWriter(fs);
+                    }
+                   // for (int m = 0; m < repeat; m++)
+                   // {
+                        for (int j = 0; j < samples; j++)
+                            sw.Write("{0}\t", measurements[j]);
+                        sw.WriteLine("");
+                   // }
+                        if (i % step == 9)
+                        {
+                            sw.Close();
+                            fs.Close();
+                        }
                 }
                 if (i % step == 0)
                 {
