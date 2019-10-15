@@ -333,7 +333,7 @@ namespace SASEBO_Measure_Lecroy
             //1表示DC,0表示AC
             //A通道打开，DC，范围为20mv,偏移-105MV
             //ret = Imports.SetChannel(_handle, Imports.Channel.ChannelA, 1, 1, Imports.Range.Range_500MV, (float)-1.05);
-            ret = Imports.SetChannel(_handle, Imports.Channel.ChannelA, 1, 1, Imports.Range.Range_500MV, (float)-0.1);
+            ret = Imports.SetChannel(_handle, Imports.Channel.ChannelA, 1, 1, Imports.Range.Range_500MV, (float)-0.15);
             if (ret != 0)
             {
                 System.Console.WriteLine("SetChannelA出错！");
@@ -373,7 +373,7 @@ namespace SASEBO_Measure_Lecroy
                 return false;
             }
             //4、设置触发信号
-            short triggerVoltage = mv_to_adc((short)1000, (short)Imports.Range.Range_5V); // ChannelInfo stores ADC counts
+            short triggerVoltage = mv_to_adc((short)2000, (short)Imports.Range.Range_5V); // ChannelInfo stores ADC counts
             ret = Imports.SetTrigger(_handle, 1, Imports.Channel.ChannelB, triggerVoltage, Imports.ThresholdDirection.Rising, (uint)delay, 0);
             if (ret != 0)
             {
@@ -971,6 +971,8 @@ namespace SASEBO_Measure_Lecroy
             uint op2 = ((uint)input[4] << 24) | ((uint)input[5] << 16) | ((uint)input[6] << 8) | (uint)(input[7]);
             for (int i = 0; i < 32; i++)
             {
+                if (i >= 4)
+                    continue;
                 if (i >= 32)//Using the same shares
                 {
                    if (GetBit(op1, i % shares) == 1)
@@ -981,12 +983,12 @@ namespace SASEBO_Measure_Lecroy
                         op2 = SetBit(op2, i);
                     else
                         op2 = ClearBit(op2, i);
-                    ////Set all other bits to 0
-                    //if (i >= 16)
+                    //Set all other bits to 0
+                    //if (i >=4)
                     //{
                     //    op1 = ClearBit(op1, i);
                     //    op2 = ClearBit(op2, i);
-                    //}
+                   // }
                     continue;
                 }
                 if (Ttest)
@@ -1044,10 +1046,10 @@ namespace SASEBO_Measure_Lecroy
             //if (!Ttest)
             //    return;
             //Ignore Op1
-            //input[0]=(byte)((op1>>24)&0xff);
-            //input[1]=(byte)((op1>>16)&0xff);
-            //input[2]=(byte)((op1>>8)&0xff);
-            //input[3] = (byte)((op1) & 0xff);
+            input[0]=(byte)((op1>>24)&0xff);
+            input[1]=(byte)((op1>>16)&0xff);
+            input[2]=(byte)((op1>>8)&0xff);
+            input[3] = (byte)((op1) & 0xff);
             input[4] = (byte)((op2 >> 24) & 0xff);
             input[5] = (byte)((op2 >> 16) & 0xff);
             input[6] = (byte)((op2 >> 8) & 0xff);
@@ -1140,6 +1142,7 @@ namespace SASEBO_Measure_Lecroy
             //text_in[7] = plain[7];
             //Change the last share according to Ttest flag
             ProduceShares_shareindex(text_in, shares, Ttest);
+
             plain[4] = text_in[4];
             plain[5] = text_in[5];
             plain[6] = text_in[6];
@@ -1180,7 +1183,7 @@ namespace SASEBO_Measure_Lecroy
                 if (c > 0)
                     System.Threading.Thread.Sleep(50);//延时
                 c++;
-                if (c == 5)
+                if (c == 10)
                     return false;
             }
             while (red == 0);
@@ -1401,7 +1404,7 @@ namespace SASEBO_Measure_Lecroy
             }
             ////5、开始测量
             int time_interval_ms = 0;
-            ret = Imports.RunBlock(_handle, (int)(samples * 1), (int)(samples * (1 - 1)), timebase, (short)0, out time_interval_ms, (ushort)0, null, IntPtr.Zero);
+            ret = Imports.RunBlock(_handle, (int)(samples * (1-0)), (int)(samples * (1 - 1)), timebase, (short)0, out time_interval_ms, (ushort)0, null, IntPtr.Zero);
             if (ret != 0)
                 System.Console.WriteLine("RunBlock出错！");
             try
@@ -1440,24 +1443,24 @@ namespace SASEBO_Measure_Lecroy
                 System.Console.WriteLine("GetValues出错！");
                 return false;
             }
+
             for (int i = 0; i < repeat; i++)
             {
-                if (overflow[i] != 0)
+                if (overflow[i] != 0 )
                 {
-                    System.Console.WriteLine("Overflow!");
-                    return false;
+                  //  for(int j=230;j<240;j++)
+                 //   if (Mulmeasurements[i][j] >= 32512 && Mulmeasurements[i][j] <= -32512)
+                 //   {
+                        System.Console.WriteLine("Overflow!");
+                        return false;
+                 //   }
                 }
             }
-            // Verify Sbox
-            //if (Verify_SITI8(plain, cipher))
+
             for (int i = 0; i < 16; i++)
                 cipher[i] = text_out[i];
             return true;
-            //else
-            //{
-            //    System.Console.WriteLine("Incorrect Sbox!");
-            //    return false;
-            //}
+
         }
         public bool GetOneTrace_PowerModel(int samples, int mlen, byte[] plain, byte[] cipher,int ind,int repeat)
         {
@@ -3068,9 +3071,9 @@ namespace SASEBO_Measure_Lecroy
                 double[] model = new double[1];
                 for (int j = 0; j < 4; j++)
                     model[0] = model[0] + HW(plain[4 + j]);
-                Tv = !Tv;
-                //if (Tv != (HW((byte)(plain[4] & 0x0f)) % 2 != 0))
-                //    System.Console.WriteLine("Error!");
+
+                if ((Tv == true) && (HW((byte)(plain[7] & 0x0f)) % 2!=0))
+                    System.Console.WriteLine("Error!");
                 
                 Tvla2.UpdateTrace(model, Tv);
 
@@ -3079,13 +3082,18 @@ namespace SASEBO_Measure_Lecroy
                 double[] sum = new double[samples];
                 for (int m = 0; m < repeat; m++)
                 {
+                    //if (Mulmeasurements[m][99] > 10000)
+                    //{
+                    //    n--;
+                    //    continue;
+                    //}
                     for (int j = 0; j < samples; j++)
                         sum[j] = sum[j] + Mulmeasurements[m][j];
                 }
                 for (int j = 0; j < samples; j++)
                 {
-                    temp[j] = (sum[j] / repeat);
-                    measurements[j] = (short)(sum[j] / repeat);
+                    temp[j] = (sum[j] / (repeat));
+                    measurements[j] = (short)(sum[j] / (repeat));
                 }
 
                 if (Tv)
@@ -3093,19 +3101,28 @@ namespace SASEBO_Measure_Lecroy
                 else
                     plain[0] = 1;
                 WriteOneTrace(samples, plain, cipher);
-                if (i == 0)
+                if (i<100)
                 {
-                    for (int j = 0; j < temp.Length; j++)
-                        sw.WriteLine("{0}", measurements[j]);
-                    sw.Close();
-                    fs.Close();
+                 //   for (int m = 0; m < repeat; m++)
+                 //   {
+                        for (int j = 0; j < temp.Length; j++)
+                            sw.Write("{0}\t", measurements[j]);
+                        sw.WriteLine("");
+                  //  }
+                        if (i == 99)
+                        {
+                            sw.Close();
+                            fs.Close();
+                        }
                 }
+                //HighPass(12E6, temp, 250E6);
                 Tvla.UpdateTrace(temp, Tv);
                 for (int m = 0; m < temp.Length; m++)
                     temp[m] = measurements[m];
 
                 for (int m = 0; m < temp.Length; m++)
                     temp[m] = Math.Pow(temp[m], 4);
+
                 Tvla1.UpdateTrace(temp, Tv);
                 if (i % 1000 == 0)
                 {
@@ -3505,18 +3522,12 @@ namespace SASEBO_Measure_Lecroy
                     i--;
                     continue;
                 }
-                if (i == 0)
-                {
-                    for (int j = 0; j < samples; j++)
-                        sw.WriteLine("{0}", Mulmeasurements[0][j]);
-                    sw.Close();
-                    fs.Close();
-                }
+               
                 double[] sum = new double[samples];
 
                 //Get T flag
                 bool Tv = GetBSSbox_M34(key, plain);
-                if (Tv != (HW((byte)(cipher[0] & 0x0f)) % 2 != 0))
+                if (Tv != (HW((byte)(cipher[0] & 0xf)) % 2 != 0))
                     System.Console.WriteLine("Error!");
                 //Get T flag
                 if (fresh)
@@ -3541,16 +3552,27 @@ namespace SASEBO_Measure_Lecroy
                 {
                     for (int m = 0; m < repeat; m++)
                     {
+                        
                         for (int j = 0; j < samples; j++)
                         {
                             sum[j] += Mulmeasurements[m][j];
                         }
 
                     }
+                    double mean = 0;
                     for (int j = 0; j < samples; j++)
                     {
-                        temp[j] = sum[j] / repeat;
-                        measurements[j] = (short)(sum[j] / repeat);
+                        temp[j] = sum[j] / (repeat);
+                        //if(j>=400)
+                           mean += temp[j];
+                    }
+                    mean = mean / samples;
+                    //mean= 0;
+                    for (int j = 0; j < samples; j++)
+                    {
+                        temp[j] = temp[j] - mean;
+                        //measurements[j] = (short)((sum[j] / repeat));
+                        measurements[j] = (short)((sum[j] / (repeat)) - mean);
                     }
                     WriteOneTrace(samples, plain, cipher);
 
@@ -3559,10 +3581,13 @@ namespace SASEBO_Measure_Lecroy
                         model[0] = model[0] + HW((byte)cipher[j]);
                     Tvla2.UpdateTrace(model, Tv);
                     //Filtering
+                    //LowPass(12E6, temp, 250E6);
                     //HighPass(12E6, temp, 250E6);
+
                     Tvla.UpdateTrace(temp, Tv);
                     for (int j = 0; j < temp.Length; j++)
                         temp[j] = measurements[j];
+                    
                     //Filtering
                     //LowPass(12E6, temp, 250E6);
 
@@ -3570,6 +3595,27 @@ namespace SASEBO_Measure_Lecroy
                     for (int j = 0; j < temp.Length; j++)
                         temp[j] = Math.Pow(temp[j], 4);
                     Tvla1.UpdateTrace(temp, Tv);
+                }
+                if (i==0)
+                {
+                    //for (int j = 0; j < temp.Length; j++)
+                    //    temp[j] = measurements[j];
+                    //LowPass(12E6, temp, 250E6);
+
+                    for (int m = 0; m < repeat; m++)
+                    {
+                        for (int j = 0; j < samples; j++)
+                            sw.Write("{0}\t", Mulmeasurements[m][j]);
+                        sw.WriteLine("");
+                    }
+                    //for (int j = 0; j < samples; j++)
+                    //    sw.Write("{0}\t", measurements[j]);
+                    //sw.WriteLine("");
+                   // if (i == 99)
+                    //{
+                        sw.Close();
+                        fs.Close();
+                    //}
                 }
                 if (i % step == 0)
                 {

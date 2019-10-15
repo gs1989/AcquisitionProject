@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
-
+using FTD2XX_NET;
 namespace SASEBO_Measure_Lecroy.CipherModule
 {
     class GeneralDevice

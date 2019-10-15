@@ -20,22 +20,22 @@ namespace SASEBO_Measure_Lecroy
             //int samples = 600;
             //uint timebase = 1;//4ns
             //int shares = 4;
-            //int traces = 100000;
+            //int traces = 1000000;
             //int RapidRepeat = 100;
             //Measurement mea = new Measurement(samples, 16);
-            //for (int instr = 3; instr >= 3; instr--)
+            //for (int instr = 4; instr >= 4; instr--)
             //{
-            //    mea.MeasureTraces_BitInteraction_RapidRepeat("M3_" + InstrName[instr] + "_4shares600S_250MSa_8SameValue_DifferentShares_Rapid100.trs", samples, traces, "COM12", timebase, instr, InstrName[instr], shares, RapidRepeat);
+            //    mea.MeasureTraces_BitInteraction_RapidRepeat("M0_" + InstrName[instr] + "_4shares800S_250MSa_1SameValue_AllotherZero_Rapid100.trs", samples, traces, "COM5", timebase, instr, InstrName[instr], shares, RapidRepeat);
             //}
             int samples = 600;
             int traces = 1000000;
-            byte internal_repeat = 100 / 10;
+            byte internal_repeat = 1000 / 10;
             byte block_repeat = 8;
             uint timebase = 1;//4ns
             bool refresh = false;
             Measurement mea = new Measurement(samples, 16);
-            mea.Ttest_BitInteraction("SCALE_4shares_M3_BitSlicedAND2_ThumbShiftLeft_REALAND2_BlockwiseSlicing_8SamePlaintexts_NoRefreshing_1M_Avg100.trs", samples, traces, "COM12", timebase, key, refresh, internal_repeat, block_repeat);
-            ////mea.Ttest_Inspecting(key, 250, 50000, "COM5", 250);
+            mea.Ttest_BitInteraction("SCALE_4shares_M3_BitSlicedAND2_ThumbShiftLeft_REALAND2_BlockwiseSlicing_8Plaintexts_NoRefreshing_1M_Avg1000.trs", samples, traces, "COM5", timebase, key, refresh, internal_repeat, block_repeat);
+            ////////mea.Ttest_Inspecting(key, 250, 50000, "COM5", 250);
             //int samples = 13000;
             //int traces = 1000000;
             //uint timebase = 1;//4ns;

@@ -66,7 +66,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="alglibnet2">
-      <HintPath>.\alglibnet2.dll</HintPath>
+      <HintPath>..\alglibnet2.dll</HintPath>
     </Reference>
     <Reference Include="FTD2XX_NET">
       <HintPath>.\FTD2XX_NET.dll</HintPath>
@@ -79,8 +79,12 @@
     <Compile Include="CipherModule\AES.cs" />
     <Compile Include="CipherModule\GeneralDevice.cs" />
     <Compile Include="CipherModule\IBlockCipher.cs" />
-    <Compile Include="CipherModule\SASEBO_G.cs" />
-    <Compile Include="CipherModule\SASEBO_IF.cs" />
+    <Compile Include="CipherModule\SASEBO_G.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="CipherModule\SASEBO_IF.cs">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="CipherTool\AES.cs" />
     <Compile Include="CipherTool\IBlockCipher.cs" />
     <Compile Include="InspectorReader_int.cs" />
