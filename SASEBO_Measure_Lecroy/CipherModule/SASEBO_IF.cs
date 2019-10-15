@@ -58,8 +58,10 @@ namespace SASEBO_Measure_Lecroy.CipherModule
             {
                 System.Threading.Thread.Sleep(50);//延时
                 count++;
-                if (count == 50)
+                if (count == 100)
+
                 {
+                    System.Console.WriteLine("Cannot read enough byte from COM!");
                     close();
                     open();
                     return;
