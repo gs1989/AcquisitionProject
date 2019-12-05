@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.IO;
 using SASEBO_Measure_Lecroy.CipherModule;
-using System.Threading;
+using System.Threading.Tasks;
 namespace SASEBO_Measure_Lecroy
 {
     class Measurement
@@ -1552,7 +1552,7 @@ namespace SASEBO_Measure_Lecroy
 
         }
 
-        public bool GetOneTrace_TAttack_Sbox_RapidRepeat_Thread(int samples, uint timebase, byte[] plain, byte[] cipher, int repeat, bool fresh, byte internal_repeat, byte block_repeat, Thread pth)
+        public bool GetOneTrace_TAttack_Sbox_RapidRepeat_Thread(int samples, uint timebase, byte[] plain, byte[] cipher, int repeat, bool fresh, byte internal_repeat, byte block_repeat, Task pth,double[][] values)
         {
 
             byte[] text_in = new byte[18];
@@ -1634,9 +1634,7 @@ namespace SASEBO_Measure_Lecroy
             if (pth != null)
             {
                 //wait until pth finish
-                pth.Join();
-                while (pth.ThreadState != ThreadState.Stopped)
-                    Thread.Sleep(10);
+                pth.Wait();
             }
             //stopwatch.Stop();
             //Console.WriteLine("Ttest Waiting Time=" + stopwatch.ElapsedTicks);
@@ -1662,6 +1660,9 @@ namespace SASEBO_Measure_Lecroy
 
             for (int i = 0; i < 16; i++)
                 cipher[i] = text_out[i];
+            for (int i = 0; i < repeat; i++)
+                for (int j = 0; j < samples; j++)
+                    values[i][j] = Mulmeasurements[i][j];
             return true;
 
         }
@@ -3750,17 +3751,14 @@ namespace SASEBO_Measure_Lecroy
 
 
         //Adding traces to Ttest, in a seperate thread 
-        public static void AddToTtest(short[][] Mulmeasurements, bool[] flag)
+        public static void AddToTtest(double[][] Mulmeasurements, bool[] flag)
         {
-            double[] t=new double[Mulmeasurements[0].Length];
             for (int i = 0; i < flag.Length; i++)
             {
-                for(int j=0;j<t.Length;j++)
-                    t[j]=Mulmeasurements[i][j];
-                Tvla.UpdateTrace(t, flag[i]);
-                for (int j = 0; j < t.Length; j++)
-                    t[j] = Math.Pow(t[j], 4);
-                Tvla1.UpdateTrace(t, flag[i]);
+                Tvla.UpdateTrace(Mulmeasurements[i], flag[i]);
+                for (int j = 0; j < Mulmeasurements[i].Length; j++)
+                    Mulmeasurements[i][j] = Math.Pow(Mulmeasurements[i][j], 4);
+                Tvla1.UpdateTrace(Mulmeasurements[i], flag[i]);
             }
         }
         public void Ttest_BitInteraction_Thread(string TRSfilename, int samples, int TraceNum, string portname, uint timebase, byte[] key, bool refresh,byte internal_repeat, byte block_repeat)
@@ -3771,9 +3769,14 @@ namespace SASEBO_Measure_Lecroy
             int repeat = 10 * internal_repeat;
             if (repeat == 0)
                 repeat = 1;
+            double[][] values = new double[repeat][];
             Mulmeasurements = new short[repeat][];
             for (int i = 0; i < repeat; i++)
+            {
                 Mulmeasurements[i] = new short[samples];
+                values[i] = new double[samples];
+            }
+                
 
             bool flag = true;
             byte SampleCoding = 0x02;
@@ -3812,21 +3815,19 @@ namespace SASEBO_Measure_Lecroy
             double[] temp = new double[measurements.Length];
             byte[] plain = new byte[16];
             byte[] cipher = new byte[16];
-            Thread pth = null;
+            Task pth = null;
             for (int i = 0; i < TraceNum; i++)
             {
                 if (i % step == 0)
                     System.Console.WriteLine("Loop {0}:", i);
                 ra.NextBytes(plain);
-                flag = GetOneTrace_TAttack_Sbox_RapidRepeat_Thread(samples, timebase, plain, cipher, repeat, refresh, internal_repeat, block_repeat,pth);
+                flag = GetOneTrace_TAttack_Sbox_RapidRepeat_Thread(samples, timebase, plain, cipher, repeat, refresh, internal_repeat, block_repeat,pth,values);
                 if (flag == false)
                 {
                     System.Console.WriteLine("Overflow!");
                     i--;
                     continue;
                 }
-
-                double[] sum = new double[samples];
 
                 //Get T flag
                 bool Tv = GetBSSbox_M34(key, plain);
@@ -3837,15 +3838,14 @@ namespace SASEBO_Measure_Lecroy
                 for(int j=0;j<repeat;j++)
                     flaga[j]=Tv;
 
-                if(pth==null || pth.IsAlive==false)
-                    pth = new Thread(() => AddToTtest(Mulmeasurements,flaga),0);
-                pth.IsBackground = true;
+                if(pth==null|| pth.IsCompleted==true)
+                    pth = new Task(() => AddToTtest(values,flaga));
                 pth.Start();
 
                
                 if (i % step == 0)
                 {
-                    pth.Join();
+                    pth.Wait();
                     Ttrend1[i / step] = Tvla.WriteTTrace("TLVATest_BSSbox_M34_4shares_O1.txt", 1);
                     Ttrend2[i / step] = Tvla.WriteTTrace("TLVATest_BSSbox_M34_4shares_O2.txt", 2);
                     Ttrend3[i / step] = Tvla.WriteTTrace("TLVATest_BSSbox_M34_4shares_O3.txt", 3);

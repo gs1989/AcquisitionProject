@@ -33,12 +33,12 @@ namespace SASEBO_Measure_Lecroy
 
             int samples = 600;
             int traces = 1000000;
-            byte internal_repeat = 1000 / 10;
-            byte block_repeat = 8;
+            byte internal_repeat = 200 / 10;
+            byte block_repeat = 1;
             uint timebase = 1;//4ns
             bool refresh = true;
             Measurement mea = new Measurement(samples, 16);
-            mea.Ttest_BitInteraction_Thread("SCALE_4shares_M0_BitSlicedAND2_ThumbShiftLeft_REALAND2_BlockwiseSlicing_8SamePlaintexts_Refreshing_1M_1000x.trs", samples, traces, "COM11", timebase, key, refresh, internal_repeat, block_repeat);
+            mea.Ttest_BitInteraction_Thread("SCALE_4shares_M0_BitSlicedAND2_ThumbShiftLeft_REALAND2_BlockwiseSlicing_1SamePlaintexts_Refreshing_1M_200x.trs", samples, traces, "COM11", timebase, key, refresh, internal_repeat, block_repeat);
             
             //int samples = 12500;
             //int traces = 1000000;
